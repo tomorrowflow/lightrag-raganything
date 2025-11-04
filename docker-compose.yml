@@ -80,7 +80,7 @@ services:
     restart: unless-stopped
 
   neo4j:
-    image: neo4j:5.15
+    image: neo4j:latest
     container_name: neo4j
     volumes:
       - neo4j_data:/data
@@ -113,7 +113,7 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
       - QDRANT__LOG_LEVEL=INFO
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q 'HTTP/1.1 200' <&3"]
       interval: 10s
       timeout: 5s
       retries: 5
