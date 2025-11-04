@@ -4,6 +4,9 @@ FROM oven/bun:1 AS frontend-builder
 
 WORKDIR /app
 
+# Install git
+RUN apt-get update && apt-get install -y git
+
 # Clone and build LightRAG frontend
 RUN git clone https://github.com/HKUDS/LightRAG.git . && \
     cd lightrag_webui && \
@@ -36,7 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-impress \
     # Image processing libraries
     poppler-utils \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     # For MinerU
     libmagic1 \
@@ -75,7 +78,7 @@ RUN git clone https://github.com/HKUDS/RAG-Anything.git /tmp/raganything && \
     rm -rf /tmp/raganything/.git
 
 # Install MinerU with all dependencies
-RUN uv pip install --system "magic-pdf[full]>=0.7.0"
+RUN uv pip install --system --prerelease=allow "magic-pdf[full]>=0.7.0"
 
 # Install additional dependencies for Neo4j and Qdrant
 RUN uv pip install --system \

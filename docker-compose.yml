@@ -1,4 +1,24 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: lightrag_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lightrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lightrag_password}
+      POSTGRES_DB: ${POSTGRES_DB:-lightrag}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - lightrag_network
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lightrag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   lightrag:
     build:
       context: .
@@ -70,12 +90,20 @@ services:
       - PARSER=mineru
       - PARSE_METHOD=auto
     depends_on:
+      postgres:
+        condition: service_healthy
       neo4j:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      memgraph:
+        condition: service_healthy
     networks:
-      - rag-network
+      - lightrag_network
     deploy:
       resources:
         reservations:
@@ -88,48 +116,41 @@ services:
   neo4j:
     image: neo4j:latest
     container_name: lightrag_neo4j
-    volumes:
-      - neo4j_data:/data
-      - neo4j_logs:/logs
-      - neo4j_import:/var/lib/neo4j/import
-      - neo4j_plugins:/plugins
     environment:
-      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
-      - NEO4J_PLUGINS=["apoc"]
-      - NEO4J_apoc_export_file_enabled=true
-      - NEO4J_apoc_import_file_enabled=true
-      - NEO4J_apoc_import_file_use__neo4j__config=true
-      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
-      - NEO4J_dbms_security_procedures_allowlist=apocapoc.*      - NEO4J_dbms_memory_heap_initial__size=512m
-      - NEO4J_dbms_memory_heap_max__size=2G
-      - NEO4J_dbms_memory_pagecache_size=1G
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j_password}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_apoc_export_file_enabled: "true"
+      NEO4J_apoc_import_file_enabled: "true"
+      NEO4J_apoc_import_file_use__neo4j__config: "true"
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.*"
+    volumes:
+      - ./data/neo4j_data:/data
+      - ./data/neo4j_logs:/logs
+    networks:
+      - lightrag_network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-password}", "RETURN 1"]
+      test: ["CMD-SHELL", "wget http://localhost:7474 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
-    networks:
-      - rag-network
-    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: qdrant
+    container_name: lightrag_qdrant
     volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__GRPC_PORT=6334
-      - QDRANT__LOG_LEVEL=INFO
+      - ./data/qdrant:/qdrant/storage
+    networks:
+      - lightrag_network
+    ports:
+      - "6334:6333"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q 'HTTP/1.1 200' <&3"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    networks:
-      - rag-network
-    restart: unless-stopped
 
   redis:
     image: redis:latest
@@ -138,7 +159,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - rag-network
+      - lightrag_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
@@ -147,12 +168,12 @@ services:
       retries: 5
 
   memgraph:
-    image: memgraph/memgraph:latest
+    image: memgraph/memgraph:2.20.1
     container_name: lightrag_memgraph
     volumes:
       - memgraph_data:/var/lib/memgraph
     networks:
-      - rag-network
+      - lightrag_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "echo 'RETURN 0;' | mgconsole || exit 1"]
@@ -163,7 +184,7 @@ services:
 
 
   mongodb:
-    image: mongo:7.0
+    image: mongo:latest
     container_name: lightrag_mongodb
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-lightrag}
@@ -172,7 +193,7 @@ services:
     volumes:
       - ./data/mongodb:/data/db
     networks:
-      - rag-network
+      - lightrag_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
@@ -181,23 +202,9 @@ services:
       retries: 5
 
 networks:
-  rag-network:
+  lightrag_network:
     driver: bridge
 
 volumes:
-  neo4j_data:
-    driver: local
-  neo4j_logs:
-    driver: local
-  neo4j_import:
-    driver: local
-  neo4j_plugins:
-    driver: local
-  memgraph_data:
-    driver: local
   redis_data:
-    driver: local
-  mongodb_data:
-    driver: local
-  qdrant_data:
-    driver: local
+  memgraph_data:
