@@ -37,12 +37,12 @@ services:
     environment:
       # LLM Configuration (External Ollama)
       - LLM_BINDING=ollama
-      - LLM_MODEL=qwen2.5:latest
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:latest}
       - LLM_BINDING_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
-      - OLLAMA_LLM_NUM_CTX=32768
+      - OLLAMA_LLM_NUM_CTX=${OLLAMA_LLM_NUM_CTX:-32768}
       
       # Vision Model Configuration
-      - VISION_MODEL=qwen2-vl:latest
+      - VISION_MODEL=${VISION_MODEL:-qwen2-vl:latest}
       
       # Embedding Configuration (External Ollama)
       - EMBEDDING_BINDING=ollama
@@ -89,6 +89,7 @@ services:
       - ENABLE_EQUATION_PROCESSING=true
       - PARSER=mineru
       - PARSE_METHOD=auto
+    command: ["python", "/app/ingestion_script.py"]
     depends_on:
       postgres:
         condition: service_healthy
