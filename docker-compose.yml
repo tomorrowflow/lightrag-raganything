@@ -56,6 +56,12 @@ services:
       - MAX_ASYNC=4
       - MAX_PARALLEL_INSERT=2
       - WORKERS=2
+
+      # MinerU Configuration
+      - MINERU_ENABLED=${MINERU_ENABLED:-true}
+      - MINERU_MODEL_PATH=/root/.cache/mineru
+      - MINERU_DEVICE=${MINERU_DEVICE:-cpu}
+      - MINERU_BACKEND=${MINERU_BACKEND:-pipeline}
       
       # RAG-Anything Configuration
       - ENABLE_IMAGE_PROCESSING=true
@@ -81,7 +87,7 @@ services:
 
   neo4j:
     image: neo4j:latest
-    container_name: neo4j
+    container_name: lightrag_neo4j
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -90,8 +96,11 @@ services:
     environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
       - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
-      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_security_procedures_allowlist=apocapoc.*      - NEO4J_dbms_memory_heap_initial__size=512m
       - NEO4J_dbms_memory_heap_max__size=2G
       - NEO4J_dbms_memory_pagecache_size=1G
     healthcheck:
@@ -122,6 +131,55 @@ services:
       - rag-network
     restart: unless-stopped
 
+  redis:
+    image: redis:latest
+    container_name: lightrag_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-lightrag_password}
+    volumes:
+      - redis_data:/data
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  memgraph:
+    image: memgraph/memgraph:latest
+    container_name: lightrag_memgraph
+    volumes:
+      - memgraph_data:/var/lib/memgraph
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'RETURN 0;' | mgconsole || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 0s
+
+
+  mongodb:
+    image: mongo:7.0
+    container_name: lightrag_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-lightrag}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-lightrag_password}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-lightrag}
+    volumes:
+      - ./data/mongodb:/data/db
+    networks:
+      - rag-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   rag-network:
     driver: bridge
@@ -134,6 +192,12 @@ volumes:
   neo4j_import:
     driver: local
   neo4j_plugins:
+    driver: local
+  memgraph_data:
+    driver: local
+  redis_data:
+    driver: local
+  mongodb_data:
     driver: local
   qdrant_data:
     driver: local

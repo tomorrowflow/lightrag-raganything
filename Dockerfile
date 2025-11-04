@@ -1,4 +1,16 @@
 # Dockerfile
+# Frontend build stage
+FROM oven/bun:1 AS frontend-builder
+
+WORKDIR /app
+
+# Clone and build LightRAG frontend
+RUN git clone https://github.com/HKUDS/LightRAG.git . && \
+    cd lightrag_webui && \
+    bun install --frozen-lockfile && \
+    bun run build
+
+# Main application stage
 FROM python:3.12-slim
 
 # Set environment variables
@@ -24,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-impress \
     # Image processing libraries
     poppler-utils \
-    libglx-mesa0 \
+    libgl1-mesa-glx \
     libglib2.0-0 \
     # For MinerU
     libmagic1 \
@@ -48,7 +60,13 @@ RUN mkdir -p /app/data/rag_storage \
 RUN git clone https://github.com/HKUDS/LightRAG.git /tmp/lightrag && \
     cd /tmp/lightrag && \
     uv pip install --system -e ".[api,offline]" && \
-    rm -rf /tmp/lightrag/.git
+    # Remove git directory but keep the source
+    rm -rf /tmp/lightrag/.git && \
+    # Copy LightRAG to app directory for frontend integration
+    cp -r /tmp/lightrag/lightrag /app/lightrag
+
+# Copy pre-built frontend from builder stage
+COPY --from=frontend-builder /app/lightrag/api/webui /app/lightrag/api/webui
 
 # Clone and install RAG-Anything
 RUN git clone https://github.com/HKUDS/RAG-Anything.git /tmp/raganything && \
@@ -57,7 +75,7 @@ RUN git clone https://github.com/HKUDS/RAG-Anything.git /tmp/raganything && \
     rm -rf /tmp/raganything/.git
 
 # Install MinerU with all dependencies
-RUN uv pip install --system --prerelease=allow "magic-pdf[full]>=0.7.0"
+RUN uv pip install --system "magic-pdf[full]>=0.7.0"
 
 # Install additional dependencies for Neo4j and Qdrant
 RUN uv pip install --system \
