@@ -57,7 +57,7 @@ RUN git clone https://github.com/HKUDS/RAG-Anything.git /tmp/raganything && \
     rm -rf /tmp/raganything/.git
 
 # Install MinerU with all dependencies
-RUN uv pip install --system "magic-pdf[full]>=0.7.0"
+RUN uv pip install --system --prerelease=allow "magic-pdf[full]>=0.7.0"
 
 # Install additional dependencies for Neo4j and Qdrant
 RUN uv pip install --system \

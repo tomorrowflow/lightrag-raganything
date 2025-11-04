@@ -82,9 +82,6 @@ services:
   neo4j:
     image: neo4j:5.15
     container_name: neo4j
-    ports:
-      - "7474:7474"  # HTTP
-      - "7687:7687"  # Bolt
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -110,9 +107,6 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
-    ports:
-      - "6333:6333"  # REST API
-      - "6334:6334"  # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
