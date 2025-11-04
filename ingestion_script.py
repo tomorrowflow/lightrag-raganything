@@ -11,24 +11,32 @@ from lightrag.llm.ollama import ollama_model_complete, ollama_embed
 from raganything import RAGAnything, RAGAnythingConfig
 
 
-def ollama_vision_func(prompt, system_prompt=None, history_messages=[], image_data=None, messages=None, **kwargs):
-    """Vision model function for multimodal processing - synchronous but works with LightRAG's wrapper"""
+async def ollama_vision_func(prompt, system_prompt=None, history_messages=[], image_data=None, messages=None, **kwargs):
+    """Async vision model function for multimodal processing"""
     vision_model = os.getenv("VISION_MODEL", "qwen2-vl:latest")
     ollama_host = os.getenv("LLM_BINDING_HOST", "http://host.docker.internal:11434")
     
-    if messages:
-        # Multimodal messages format (for RAG-Anything VLM enhanced queries)
+    # Get event loop for running blocking requests in executor
+    loop = asyncio.get_event_loop()
+    
+    def _make_request(payload):
+        """Blocking request function to run in executor"""
         response = requests.post(
             f"{ollama_host}/api/chat",
-            json={
-                "model": vision_model,
-                "messages": messages,
-                "stream": False
-            },
+            json=payload,
             timeout=300
         )
         response.raise_for_status()
         return response.json()["message"]["content"]
+    
+    if messages:
+        # Multimodal messages format (for RAG-Anything VLM enhanced queries)
+        payload = {
+            "model": vision_model,
+            "messages": messages,
+            "stream": False
+        }
+        return await loop.run_in_executor(None, _make_request, payload)
     
     elif image_data:
         # Single image format (for RAG-Anything image processing)
@@ -44,21 +52,16 @@ def ollama_vision_func(prompt, system_prompt=None, history_messages=[], image_da
             "images": [image_data] if isinstance(image_data, str) else image_data
         })
         
-        response = requests.post(
-            f"{ollama_host}/api/chat",
-            json={
-                "model": vision_model,
-                "messages": chat_messages,
-                "stream": False
-            },
-            timeout=300
-        )
-        response.raise_for_status()
-        return response.json()["message"]["content"]
+        payload = {
+            "model": vision_model,
+            "messages": chat_messages,
+            "stream": False
+        }
+        return await loop.run_in_executor(None, _make_request, payload)
     
     else:
         # Text only - use regular LLM via LightRAG's built-in function
-        # This will be handled by ollama_model_complete
+        # ollama_model_complete is already async-safe
         return ollama_model_complete(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -80,12 +83,14 @@ async def main():
     ollama_host = os.getenv("LLM_BINDING_HOST", "http://host.docker.internal:11434")
     llm_model = os.getenv("LLM_MODEL", "qwen2.5:latest")
     embed_model = os.getenv("EMBEDDING_MODEL", "bge-m3:latest")
+    vision_model = os.getenv("VISION_MODEL", "qwen2-vl:latest")
     
     print(f"📂 Working directory: {working_dir}")
     print(f"📥 Input directory: {input_dir}")
     print(f"🔢 Embedding dimension: {embedding_dim}")
     print(f"🤖 LLM Model: {llm_model}")
     print(f"📊 Embedding Model: {embed_model}")
+    print(f"🎨 Vision Model: {vision_model}")
     print(f"🌐 Ollama Host: {ollama_host}")
     
     # Initialize LightRAG instance with built-in Ollama functions
@@ -117,7 +122,7 @@ async def main():
     print("🎨 Initializing RAG-Anything with multimodal support...")
     rag = RAGAnything(
         lightrag=lightrag,
-        vision_model_func=ollama_vision_func,  # Custom vision function
+        vision_model_func=ollama_vision_func,  # Now async
         config=RAGAnythingConfig(
             working_dir=working_dir,
             parser="mineru",
