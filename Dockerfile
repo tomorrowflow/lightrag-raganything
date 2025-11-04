@@ -90,6 +90,10 @@ RUN uv pip install --system \
 # Pre-download tiktoken cache
 RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')" || true
 
+# Copy custom ingestion script
+COPY ingestion_script.py /app/ingestion_script.py
+RUN chmod +x /app/ingestion_script.py
+
 # Create non-root user
 RUN useradd -m -u 1000 lightrag && \
     chown -R lightrag:lightrag /app

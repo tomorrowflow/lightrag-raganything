@@ -168,7 +168,7 @@ services:
       retries: 5
 
   memgraph:
-    image: memgraph/memgraph:2.20.1
+    image: memgraph/memgraph:latest
     container_name: lightrag_memgraph
     volumes:
       - memgraph_data:/var/lib/memgraph
@@ -207,4 +207,6 @@ networks:
 
 volumes:
   redis_data:
+    driver: local
   memgraph_data:
+    driver: local
