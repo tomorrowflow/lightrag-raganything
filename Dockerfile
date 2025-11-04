@@ -109,13 +109,15 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # Create entrypoint script
 USER root
-RUN echo '#!/bin/bash\n \
-chown -R lightrag:lightrag /app/data /app/cache 2>/dev/null || true\n \
-exec su lightrag -c "$@"' > /entrypoint.sh && \
+RUN echo '#!/bin/bash\n\
+chown -R lightrag:lightrag /app/data /app/cache 2>/dev/null || true\n\
+exec gosu lightrag "$@"' > /entrypoint.sh && \
 chmod +x /entrypoint.sh
 
-USER lightrag
-ENTRYPOINT ["/entrypoint.sh", "sh", "-c"]
+# Install gosu
+RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Start LightRAG server
-CMD ["python -m lightrag.api.lightrag_server --host 0.0.0.0 --port 9621 --working-dir /app/data/rag_storage --input-dir /app/data/inputs"]
+CMD ["python", "-m", "lightrag.api.lightrag_server", "--host", "0.0.0.0", "--port", "9621", "--working-dir", "/app/data/rag_storage", "--input-dir", "/app/data/inputs"]
