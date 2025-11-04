@@ -19,11 +19,12 @@ services:
       timeout: 5s
       retries: 5
 
+# Main LightRAG Server with Web UI
   lightrag:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: lightrag-rag-anything
+    container_name: lightrag_server
     ports:
       - "9621:9621"
     volumes:
@@ -76,35 +77,24 @@ services:
       - MAX_ASYNC=4
       - MAX_PARALLEL_INSERT=2
       - WORKERS=2
-
-      # MinerU Configuration
-      - MINERU_ENABLED=${MINERU_ENABLED:-true}
-      - MINERU_MODEL_PATH=/root/.cache/mineru
-      - MINERU_DEVICE=${MINERU_DEVICE:-cpu}
-      - MINERU_BACKEND=${MINERU_BACKEND:-pipeline}
       
-      # RAG-Anything Configuration
-      - ENABLE_IMAGE_PROCESSING=true
-      - ENABLE_TABLE_PROCESSING=true
-      - ENABLE_EQUATION_PROCESSING=true
-      - PARSER=mineru
-      - PARSE_METHOD=auto
-    command: ["python", "/app/ingestion_script.py"]
+      # Workspace isolation (optional)
+      - WORKSPACE=diary
+    # THIS IS THE KEY CHANGE - Run the server, not ingestion script
+    command: ["python", "-m", "lightrag.api.lightrag_server", 
+              "--host", "0.0.0.0", 
+              "--port", "9621", 
+              "--working-dir", "/app/data/rag_storage", 
+              "--input-dir", "/app/data/inputs"]
     depends_on:
-      postgres:
-        condition: service_healthy
       neo4j:
-        condition: service_healthy
-      mongodb:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      memgraph:
-        condition: service_healthy
     networks:
       - lightrag_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         reservations:
@@ -113,6 +103,56 @@ services:
               count: 1
               capabilities: [gpu]
     restart: unless-stopped
+
+  # Separate ingestion service for RAG-Anything multimodal processing
+  lightrag-ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lightrag_ingestion
+    volumes:
+      - ./data/rag_storage:/app/data/rag_storage
+      - ./data/inputs:/app/data/inputs
+      - ./data/outputs:/app/data/outputs
+      - ./ingestion_script.py:/app/ingestion_script.py:ro
+    environment:
+      # LLM Configuration
+      - LLM_BINDING=ollama
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:latest}
+      - LLM_BINDING_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_LLM_NUM_CTX=32768
+      
+      # Vision Model
+      - VISION_MODEL=${VISION_MODEL:-qwen2-vl:latest}
+      
+      # Embedding Configuration
+      - EMBEDDING_BINDING=ollama
+      - EMBEDDING_BINDING_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-bge-m3:latest}
+      - EMBEDDING_DIM=1024
+      
+      # Directories
+      - WORKING_DIR=/app/data/rag_storage
+      - INPUT_DIR=/app/data/inputs
+    command: ["python", "/app/ingestion_script.py"]
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - lightrag_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - ingestion  # Only runs when explicitly called
 
   neo4j:
     image: neo4j:latest
